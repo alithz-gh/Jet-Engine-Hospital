@@ -8,11 +8,36 @@ import numpy as np
 import pandas as pd
 import pickle
 
+try:
+    import numpy.random._pickle as _np_pickle
+    from numpy.random._mt19937 import MT19937
+except Exception:
+    _np_pickle = None
+    MT19937 = None
+
+
+def _ensure_numpy_pickle_compatibility():
+    if _np_pickle is None or MT19937 is None:
+        return
+    if getattr(_np_pickle, 'BitGenerators', None) is not None:
+        _np_pickle.BitGenerators.setdefault('MT19937', MT19937)
+        _np_pickle.BitGenerators.setdefault('numpy.random._mt19937.MT19937', MT19937)
+        _np_pickle.BitGenerators.setdefault('numpy.random.mtrand.MT19937', MT19937)
+
 
 class PrognosticsSystem:
     def __init__(self, bundle_path='artifacts/prognostics_bundle.pkl'):
+        _ensure_numpy_pickle_compatibility()
         with open(bundle_path, 'rb') as f:
-            b = pickle.load(f)
+            try:
+                b = pickle.load(f)
+            except ValueError as exc:
+                if 'known BitGenerator module' in str(exc):
+                    _ensure_numpy_pickle_compatibility()
+                    with open(bundle_path, 'rb') as f2:
+                        b = pickle.load(f2)
+                else:
+                    raise
         self.pipe = b['feature_pipeline']
         self.window_cols = b['window_cols']
         self.current_cols = b['current_cols']
